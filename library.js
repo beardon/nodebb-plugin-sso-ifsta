@@ -11,7 +11,7 @@
 		Step 2: Give it a whirl. If you see the congrats message, you're doing well so far!
 
 		Step 3: Customise the `parseUserReturn` method to normalise your user route's data return into
-				a format accepted by NodeBB. Instructions are provided there. (Line 137)
+				a format accepted by NodeBB. Instructions are provided there. (Line 146)
 
 		Step 4: If all goes well, you'll be able to login/register via your OAuth endpoint credentials.
 	*/
@@ -25,18 +25,39 @@
 		path = module.parent.require('path'),
 		nconf = module.parent.require('nconf'),
 		winston = module.parent.require('winston'),
-		async = module.parent.require('async'),
+		async = module.parent.require('async');
 
-		constants = Object.freeze({
+	var authenticationController = module.parent.require('./controllers/authentication');
+
+	/**
+	 * REMEMBER
+	 *   Never save your OAuth Key/Secret or OAuth2 ID/Secret pair in code! It could be published and leaked accidentally.
+	 *   Save it into your config.json file instead:
+	 *
+	 *   {
+	 *     ...
+	 *     "oauth": {
+	 *       "id": "someoauthid",
+	 *       "secret": "youroauthsecret"
+	 *     }
+	 *     ...
+	 *   }
+	 *
+	 *   ... or use environment variables instead:
+	 *
+	 *   `OAUTH__ID=someoauthid OAUTH__SECRET=youroauthsecret node app.js`
+	 */
+
+	var constants = Object.freeze({
 			type: 'oauth2',	// Either 'oauth' or 'oauth2'
 			name: 'ifsta',	// Something unique to your OAuth provider in lowercase, like "github", or "nodebb"
-            icon: 'fa-fire',
+			icon: 'fa-fire',
 			oauth: {
 				requestTokenURL: '',
 				accessTokenURL: '',
 				userAuthorizationURL: '',
-				consumerKey: '',
-				consumerSecret: ''
+				consumerKey: nconf.get('oauth:key'),	// don't change this line
+				consumerSecret: nconf.get('oauth:secret'),	// don't change this line
 			},
 			oauth2: {
 				authorizationURL: nconf.get('sso-ifsta:authorization_url'),
@@ -78,6 +99,7 @@
 							OAuth.parseUserReturn(json, function(err, profile) {
 								if (err) return done(err);
 								profile.provider = constants.name;
+
 								done(null, profile);
 							});
 						} catch(e) {
@@ -108,7 +130,9 @@
 //				};
 			}
 
-			passport.use(constants.name, new passportOAuth(opts, function(token, secret, profile, done) {
+			opts.passReqToCallback = true;
+
+			passport.use(constants.name, new passportOAuth(opts, function(req, token, secret, profile, done) {
 				OAuth.login({
 					oAuthid: profile.id,
 					handle: profile.displayName,
@@ -118,6 +142,8 @@
 					if (err) {
 						return done(err);
 					}
+
+					authenticationController.onSuccessfulLogin(req, user.uid);
 					done(null, user);
 				});
 			}));
@@ -224,15 +250,15 @@
 		});
 	};
 
-	OAuth.deleteUserData = function(uid, callback) {
+	OAuth.deleteUserData = function(data, callback) {
 		async.waterfall([
-			async.apply(User.getUserField, uid, constants.name + 'Id'),
+			async.apply(User.getUserField, data.uid, constants.name + 'Id'),
 			function(oAuthIdToDelete, next) {
 				db.deleteObjectField(constants.name + 'Id:uid', oAuthIdToDelete, next);
 			}
 		], function(err) {
 			if (err) {
-				winston.error('[sso-oauth] Could not remove OAuthId data for uid ' + uid + '. Error: ' + err);
+				winston.error('[sso-oauth] Could not remove OAuthId data for uid ' + data.uid + '. Error: ' + err);
 				return callback(err);
 			}
 			callback(null, uid);
