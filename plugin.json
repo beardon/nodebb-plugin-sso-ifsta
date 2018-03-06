@@ -5,7 +5,7 @@
 	"url": "https://github.com/beardon/nodebb-plugin-sso-ifsta",
 	"library": "./library.js",
 	"hooks": [
-		{ "hook": "filter:user.delete", "method": "deleteUserData" },
+		{ "hook": "static:user.delete", "method": "deleteUserData" },
 		{ "hook": "filter:auth.init", "method": "getStrategy" }
 	]
 }
